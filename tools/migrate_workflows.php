@@ -1,0 +1,11 @@
+<?php
+if(PHP_SAPI!=='cli') exit;
+require __DIR__.'/../includes/bootstrap.php';
+foreach(['attendance'=>['shift_snapshot LONGTEXT NULL'],'attendance_corrections'=>['sessions_json LONGTEXT NULL']] as $table=>$defs){$cols=Database::q('SHOW COLUMNS FROM '.$table)->fetchAll(PDO::FETCH_COLUMN);foreach($defs as $def)if(!in_array(explode(' ',$def)[0],$cols))Database::pdo()->exec('ALTER TABLE '.$table.' ADD '.$def);}
+Database::pdo()->exec("CREATE TABLE IF NOT EXISTS shift_assignments(id BIGINT AUTO_INCREMENT PRIMARY KEY,emp_no VARCHAR(32) NOT NULL,effective_date DATE NOT NULL,snapshot LONGTEXT NOT NULL,actor_id INT NULL,created_at DATETIME DEFAULT CURRENT_TIMESTAMP,INDEX(emp_no,effective_date)) ENGINE=InnoDB");
+Database::pdo()->exec("CREATE TABLE IF NOT EXISTS overtime_reviews(id BIGINT AUTO_INCREMENT PRIMARY KEY,emp_no VARCHAR(32) NOT NULL,work_date DATE NOT NULL,attendance_hash CHAR(64) NOT NULL,calculated_minutes INT NOT NULL,approved_minutes INT NOT NULL,decision VARCHAR(16) NOT NULL,reason VARCHAR(1000) NOT NULL,reviewer VARCHAR(64) NOT NULL,created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6),INDEX(emp_no,work_date)) ENGINE=InnoDB");
+Database::pdo()->exec("CREATE TABLE IF NOT EXISTS report_filters(admin_id INT PRIMARY KEY,filters_json TEXT NOT NULL) ENGINE=InnoDB");
+// Preserve the available baseline, without recalculating historical totals.
+foreach(Database::q('SELECT emp_no FROM employees')->fetchAll() as $employee){$emp=$employee['emp_no'];if(!Database::q('SELECT id FROM shift_assignments WHERE emp_no=? LIMIT 1',[$emp])->fetchColumn()){ $r=Database::q('SELECT s.* FROM employees e JOIN shifts s ON s.id=e.shift_id WHERE e.emp_no=?',[$emp])->fetch();$r=$r?:Shift::getDefault();Database::q('INSERT INTO shift_assignments(emp_no,effective_date,snapshot) VALUES(?,?,?)',[$emp,'1000-01-01',json_encode($r)]);}}
+Database::pdo()->exec("UPDATE attendance a JOIN shifts s ON s.id=a.shift_id SET a.shift_snapshot=JSON_OBJECT('id',s.id,'name',s.name,'start_time',s.start_time,'end_time',s.end_time,'grace_minutes',s.grace_minutes,'break_minutes',s.break_minutes,'half_day_minutes',s.half_day_minutes,'workdays',s.workdays) WHERE a.shift_snapshot IS NULL");
+echo "Workflow schema ready; historical totals unchanged.\n";

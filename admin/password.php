@@ -1,0 +1,16 @@
+<?php
+require dirname(__DIR__).'/includes/bootstrap.php';Auth::requireLogin();require BASE_PATH.'/src/PasswordRecovery.php';$notice='';$error='';$id=(int)$_SESSION['admin_id'];
+if($_SERVER['REQUEST_METHOD']==='POST')try{
+ if(!PasswordRecovery::throttle('change',(string)$id))throw new InvalidArgumentException('Too many attempts. Wait 15 minutes.');
+ $user=Database::q('SELECT * FROM admins WHERE id=?',[$id])->fetch();if(!password_verify((string)($_POST['current_password']??''),$user['password_hash']))throw new InvalidArgumentException('Current password is incorrect.');
+ $password=(string)($_POST['new_password']??'');$email=trim((string)($_POST['recovery_email']??''));
+ if($email!=='' && (strlen($email)>254 || !filter_var($email,FILTER_VALIDATE_EMAIL)))throw new InvalidArgumentException('Enter a valid recovery email.');
+ if($password!=='' && (strlen($password)<12 || strlen($password)>72))throw new InvalidArgumentException('Use a password of 12–72 characters.');
+ if($password!==(string)($_POST['confirm_password']??''))throw new InvalidArgumentException('New passwords do not match.');
+ Database::pdo()->beginTransaction();Database::q('UPDATE admins SET recovery_email=?,password_hash=?,session_version=session_version+1 WHERE id=?',[$email?:null,$password!==''?password_hash($password,PASSWORD_DEFAULT):$user['password_hash'],$id]);Database::q('DELETE FROM password_resets WHERE admin_id=?',[$id]);Database::q('INSERT INTO account_audit(actor_id,target_id,action,details) VALUES(?,?,?,?)',[$id,$id,'password_settings_changed',json_encode(['password_changed'=>$password!=='','recovery_email_changed'=>$email!==($user['recovery_email']??'')])]);Database::pdo()->commit();$_SESSION['version']=(int)$user['session_version']+1;session_regenerate_id(true);$notice='Account security saved. Other signed-in sessions have been signed out.';
+}catch(Throwable $ex){if(Database::pdo()->inTransaction())Database::pdo()->rollBack();$error=$ex instanceof InvalidArgumentException?$ex->getMessage():'Could not save account security.';}
+$user=Database::q('SELECT recovery_email FROM admins WHERE id=?',[$id])->fetch();$active='accounts';$pageTitle='Password and recovery';require BASE_PATH.'/includes/header.php';
+?>
+<h1>Password and recovery</h1><?php if($notice): ?><div class="alert ok"><?= e($notice) ?></div><?php endif; ?><?php if($error): ?><div class="alert err"><?= e($error) ?></div><?php endif; ?>
+<form method="post" class="panel form"><?= Auth::field() ?><label>Current password<input type="password" name="current_password" autocomplete="current-password" required></label><label>New password<input type="password" name="new_password" minlength="12" maxlength="72" autocomplete="new-password"></label><label>Confirm new password<input type="password" name="confirm_password" minlength="12" maxlength="72" autocomplete="new-password"></label><p class="muted">Leave both new-password fields blank to update only your recovery email.</p><label>Recovery email<input type="email" name="recovery_email" maxlength="254" value="<?= e($user['recovery_email']) ?>"></label><p class="muted">Forgot password sends a reset code to this address. Add an email you can access before you need recovery. Email sending must be configured in Settings.</p><button class="btn">Save security settings</button></form>
+<?php require BASE_PATH.'/includes/footer.php'; ?>

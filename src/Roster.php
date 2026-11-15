@@ -59,7 +59,7 @@ class Roster
             foreach ($employees as $e) {
                 $emp = $e['emp_no'];
                 $row = $att[$emp . '|' . $date] ?? null;
-                $st  = self::resolve($emp, $date, $shiftOf[$emp], $row);
+                $st  = self::resolve($emp, $date, Shift::forEmployee($emp,$date), $row);
                 $counts[$st] = ($counts[$st] ?? 0) + 1;
                 if ($row) { $worked += (int)$row['work_minutes']; $ot += (int)$row['overtime_minutes']; }
             }

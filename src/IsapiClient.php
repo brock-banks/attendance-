@@ -10,11 +10,13 @@ class IsapiClient
 {
     private string $base;
 
-    public function __construct()
+    public function __construct(?string $ip = null)
     {
         $scheme = DEVICE_HTTPS ? 'https' : 'http';
-        $this->base = sprintf('%s://%s:%d', $scheme, DEVICE_IP, DEVICE_PORT);
+        $this->base = sprintf('%s://%s:%d', $scheme, $ip ?? self::configuredIp(), DEVICE_PORT);
     }
+
+    public static function configuredIp(): string { return Shift::setting('device_ip', DEVICE_IP); }
 
     /**
      * @return array{code:int, body:string}
@@ -70,11 +72,12 @@ class IsapiClient
             ],
         ];
         $res = $this->request('POST', '/ISAPI/AccessControl/UserInfo/Record?format=json', $payload);
-        if ($cardNo) {
-            $this->request('POST', '/ISAPI/AccessControl/CardInfo/Record?format=json', [
+        if ($cardNo && EmployeeSync::accepted($res)) {
+            $cardResult=$this->request('POST', '/ISAPI/AccessControl/CardInfo/Record?format=json', [
                 'CardInfo' => ['employeeNo' => $empNo, 'cardNo' => $cardNo, 'cardType' => 'normalCard'],
             ]);
         }
+        if(isset($cardResult) && !EmployeeSync::accepted($cardResult))return $cardResult;
         return $res;
     }
 
@@ -137,6 +140,17 @@ class IsapiClient
                                 string $path = '/attendance/api/event-receiver.php',
                                 string $id = '1'): array
     {
+        // Preserve subscription fields when repairing an existing destination.
+        $existing=$this->listHttpHosts();
+        if($existing['code']!==200)return $existing;
+        $document=@simplexml_load_string($existing['body']);
+        if(!$document)return ['code'=>0,'body'=>'Could not read existing event settings.'];
+        foreach($document->xpath('//*[local-name()="HttpHostNotification"]') as $host){
+            if((string)$host->id===$id){
+                $host->ipAddress=$serverIp;$host->portNo=(string)$port;$host->url=$path;
+                return $this->request('PUT','/ISAPI/Event/notification/httpHosts/'.$id,$host->asXML(),'application/xml');
+            }
+        }
         // This firmware (V4.x) uses XML for httpHosts, not JSON.
         $ns = 'http://www.isapi.org/ver20/XMLSchema';
         $xml = '<?xml version="1.0" encoding="UTF-8"?>'

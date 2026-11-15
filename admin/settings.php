@@ -51,9 +51,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'assign') {
         foreach ($_POST['shift'] ?? [] as $empNo => $sid) {
             $sid = $sid === '' ? null : (int)$sid;
+            Shift::assign((string)$empNo,$sid,date('Y-m-d',strtotime('+1 day')));
             Database::q("UPDATE employees SET shift_id=? WHERE emp_no=?", [$sid, $empNo]);
         }
-        $msg = 'Shift assignments saved. Recompute to apply to past records.';
+        $msg = 'Shift assignments saved for tomorrow. Historical shifts are preserved.';
     }
 
     if ($action === 'recompute') {
@@ -127,13 +128,25 @@ $alert = [
 $employees = Database::q("SELECT emp_no, name, shift_id FROM employees ORDER BY name")->fetchAll();
 $edit = null;
 if (isset($_GET['edit'])) { $edit = Shift::get((int)$_GET['edit']); }
+$sections = ['shifts'=>'Shifts', 'assignments'=>'Employee assignments', 'holidays'=>'Holidays', 'alerts'=>'Email alerts', 'advanced'=>'Advanced'];
+$actionSections = ['save_shift'=>'shifts','delete_shift'=>'shifts','assign'=>'assignments','add_holiday'=>'holidays','delete_holiday'=>'holidays','save_alerts'=>'alerts','test_email'=>'alerts','recompute'=>'advanced'];
+$section = $actionSections[$action ?? ''] ?? ($_GET['section'] ?? 'shifts');
+if (!is_string($section) || !isset($sections[$section])) { $section = 'shifts'; }
+if ($edit) { $section = 'shifts'; }
 $editDays = $edit ? array_map('intval', explode(',', $edit['workdays'])) : [1,2,3,4,5];
 ?>
-<h1>Settings <small>Shifts &amp; attendance rules</small></h1>
+<h1>Work schedules</h1>
 <?php if ($msg): ?><div class="alert ok"><?= e($msg) ?></div><?php endif; ?>
 <?php if ($err): ?><div class="alert err"><?= e($err) ?></div><?php endif; ?>
 
-<section class="grid2" style="align-items:start">
+<nav class="schedule-nav" aria-label="Work schedule sections">
+  <?php foreach ($sections as $key => $label): ?>
+    <a href="?section=<?= e($key) ?>" <?= $section === $key ? 'aria-current="page"' : '' ?>><?= e($label) ?></a>
+  <?php endforeach; ?>
+</nav>
+<div class="schedule-content">
+<?php if ($section === 'shifts'): ?>
+<section class="schedule-shifts">
   <!-- Shift list -->
   <div class="panel">
     <h2>Shifts</h2>
@@ -143,18 +156,18 @@ $editDays = $edit ? array_map('intval', explode(',', $edit['workdays'])) : [1,2,
       <?php foreach ($shifts as $s):
             $days = array_map('intval', explode(',', $s['workdays'])); ?>
         <tr>
-          <td><?= e($s['name']) ?> <?= $s['is_default'] ? '<span class="pill ok">default</span>' : '' ?></td>
-          <td><?= e(substr($s['start_time'],0,5)) ?>–<?= e(substr($s['end_time'],0,5)) ?><?= Shift::crossesMidnight($s) ? ' <span class="pill">+1</span>' : '' ?></td>
+          <td><?= e($s['name']) ?> <?= $s['is_default'] ? status_label('Default') : '' ?></td>
+          <td><?= e(substr($s['start_time'],0,5)) ?>–<?= e(substr($s['end_time'],0,5)) ?><?= Shift::crossesMidnight($s) ? ' '.status_label('Next day') : '' ?></td>
           <td><?= (int)$s['grace_minutes'] ?>m</td>
           <td><?= (int)$s['break_minutes'] ?>m</td>
           <td><?= e(implode(' ', array_map(fn($d)=>$DOW[$d], $days))) ?></td>
           <td style="white-space:nowrap">
-            <a class="btn sm ghost" href="?edit=<?= (int)$s['id'] ?>">Edit</a>
+            <a class="btn sm ghost" href="?section=shifts&amp;edit=<?= (int)$s['id'] ?>">Edit</a>
             <form method="post" style="display:inline" onsubmit="return confirm('Delete shift <?= e($s['name']) ?>?')">
               <input type="hidden" name="action" value="delete_shift">
               <input type="hidden" name="id" value="<?= (int)$s['id'] ?>">
-              <button class="btn sm danger">×</button>
-            </form>
+              <button class="btn sm danger" aria-label="Delete">×</button>
+            <?= Auth::field() ?></form>
           </td>
         </tr>
       <?php endforeach; ?>
@@ -163,8 +176,8 @@ $editDays = $edit ? array_map('intval', explode(',', $edit['workdays'])) : [1,2,
   </div>
 
   <!-- Add / edit shift -->
-  <div class="panel">
-    <h2><?= $edit ? 'Edit shift' : 'Add shift' ?></h2>
+  <details class="action-disclosure" <?= $edit || ($err && ($action ?? '') === 'save_shift') ? 'open' : '' ?>>
+    <summary><?= $edit ? 'Edit shift' : 'Add shift' ?></summary>
     <form method="post" class="form" style="max-width:none">
       <input type="hidden" name="action" value="save_shift">
       <input type="hidden" name="id" value="<?= (int)($edit['id'] ?? 0) ?>">
@@ -196,13 +209,17 @@ $editDays = $edit ? array_map('intval', explode(',', $edit['workdays'])) : [1,2,
         <?php if ($edit): ?><a class="btn ghost" href="<?= APP_BASE_URL ?>/admin/settings.php">Cancel</a><?php endif; ?>
       </div>
       <p class="muted" style="font-size:12px">Tip: for an overnight shift set End earlier than Start (e.g. 22:00 → 06:00).</p>
-    </form>
-  </div>
+    <?= Auth::field() ?></form>
+  </details>
 </section>
+<?php endif; ?>
 
+<?php if ($section === 'holidays'): ?>
 <!-- Holidays -->
 <div class="panel" style="margin-top:16px">
   <h2>Holidays</h2>
+  <details class="schedule-disclosure" <?= $err ? 'open' : '' ?>>
+  <summary>Add holiday</summary>
   <form method="post" class="filters" style="margin-bottom:14px">
     <input type="hidden" name="action" value="add_holiday">
     <label>Date <input type="date" name="holiday_date" required></label>
@@ -210,7 +227,8 @@ $editDays = $edit ? array_map('intval', explode(',', $edit['workdays'])) : [1,2,
     <label style="flex-direction:row;align-items:center;gap:6px;font-weight:400;align-self:center">
       <input type="checkbox" name="recurring" style="height:auto"> Repeats yearly</label>
     <button class="btn">Add holiday</button>
-  </form>
+  <?= Auth::field() ?></form>
+  </details>
   <table class="tbl">
     <thead><tr><th>Date</th><th>Name</th><th>Repeats</th><th></th></tr></thead>
     <tbody>
@@ -219,13 +237,13 @@ $editDays = $edit ? array_map('intval', explode(',', $edit['workdays'])) : [1,2,
       <tr>
         <td><?= e($h['holiday_date']) ?></td>
         <td><?= e($h['name']) ?></td>
-        <td><?= $h['recurring'] ? '<span class="pill">yearly</span>' : '—' ?></td>
+        <td><?= $h['recurring'] ? status_label('Yearly') : '—' ?></td>
         <td>
           <form method="post" onsubmit="return confirm('Remove this holiday?')">
             <input type="hidden" name="action" value="delete_holiday">
             <input type="hidden" name="id" value="<?= (int)$h['id'] ?>">
-            <button class="btn sm danger">×</button>
-          </form>
+            <button class="btn sm danger" aria-label="Delete">×</button>
+          <?= Auth::field() ?></form>
         </td>
       </tr>
     <?php endforeach; ?>
@@ -234,11 +252,13 @@ $editDays = $edit ? array_map('intval', explode(',', $edit['workdays'])) : [1,2,
   <p class="muted" style="font-size:12px">On a holiday, non-working employees aren't marked absent. "Repeats yearly" matches the month &amp; day every year.</p>
 </div>
 
+<?php endif; ?>
+<?php if ($section === 'alerts'): ?>
 <!-- Email alerts -->
 <div class="panel" style="margin-top:16px">
   <h2>Email alerts</h2>
   <?php if (!Mailer::configured()): ?>
-    <div class="alert info">Fill in the <b>SMTP server</b> fields below and save to enable email alerts.</div>
+    <div class="alert info">Complete <b>Email server setup</b> below to enable email alerts.</div>
   <?php endif; ?>
   <form method="post" class="form" style="max-width:none">
     <input type="hidden" name="action" value="save_alerts">
@@ -256,8 +276,9 @@ $editDays = $edit ? array_map('intval', explode(',', $edit['workdays'])) : [1,2,
       <label style="flex:1;min-width:180px">Daily summary time <input type="time" name="summary_time" value="<?= e($alert['stime']) ?>"></label>
     </div>
 
-    <hr style="border:0;border-top:1px solid var(--divider);width:100%;margin:4px 0">
-    <div class="muted" style="font-weight:600;font-size:13px">SMTP server</div>
+    <details class="schedule-disclosure" <?= !Mailer::configured() ? 'open' : '' ?>>
+    <summary>Email server setup</summary>
+    <div class="schedule-server">
     <div style="display:flex;gap:12px;flex-wrap:wrap">
       <label style="flex:2;min-width:200px">Host <input name="smtp_host" value="<?= e($alert['smtp_host']) ?>" placeholder="smtp.gmail.com"></label>
       <label style="flex:1;min-width:90px">Port <input type="number" name="smtp_port" value="<?= (int)$alert['smtp_port'] ?>"></label>
@@ -279,17 +300,22 @@ $editDays = $edit ? array_map('intval', explode(',', $edit['workdays'])) : [1,2,
     </div>
     <p class="muted" style="font-size:12px">Gmail: host <code>smtp.gmail.com</code>, TLS port 587, and a Google <b>App Password</b> (not your normal password — needs 2-Step Verification). Outlook: <code>smtp-mail.outlook.com</code>, TLS 587.</p>
 
-    <div style="display:flex;gap:10px">
+    </div>
+    </details>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn" type="submit">Save alert settings</button>
       <button class="btn ghost" type="submit" name="action" value="test_email">Send test email</button>
     </div>
     <p class="muted" style="font-size:12px">Alerts are sent by <code>cron.php</code> — schedule it to run every ~10 minutes (Windows Task Scheduler). Each alert goes out once per day.</p>
-  </form>
+  <?= Auth::field() ?></form>
 </div>
 
+<?php endif; ?>
+<?php if ($section === 'assignments'): ?>
 <!-- Assign shifts -->
 <div class="panel" style="margin-top:16px">
-  <h2>Assign shifts to employees</h2>
+  <h2>Employee assignments</h2>
+  <p class="muted">Changes take effect tomorrow. Previous attendance keeps its original shift.</p>
   <?php if (!$employees): ?>
     <p class="muted">No employees yet.</p>
   <?php else: ?>
@@ -315,18 +341,23 @@ $editDays = $edit ? array_map('intval', explode(',', $edit['workdays'])) : [1,2,
       </tbody>
     </table>
     <div style="margin-top:14px"><button class="btn">Save assignments</button></div>
-  </form>
+  <?= Auth::field() ?></form>
   <?php endif; ?>
 </div>
 
+<?php endif; ?>
+<?php if ($section === 'advanced'): ?>
 <!-- Recompute -->
 <div class="panel" style="margin-top:16px">
   <h2>Recompute attendance</h2>
-  <p class="muted">Rebuild all attendance from raw scans using the current shift rules. Run this after changing shifts or assignments.</p>
+  <p class="muted">Rebuild attendance totals from saved scans and historical shift rules. This updates existing attendance records; it is not needed for routine schedule changes.</p>
   <form method="post" onsubmit="return confirm('Rebuild all attendance from scans now?')">
     <input type="hidden" name="action" value="recompute">
     <button class="btn ghost">Recompute now</button>
-  </form>
+  <?= Auth::field() ?></form>
+</div>
+
+<?php endif; ?>
 </div>
 
 <?php require_once BASE_PATH . '/includes/footer.php'; ?>

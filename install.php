@@ -5,6 +5,8 @@
  */
 require_once __DIR__ . '/config/config.php';
 
+require_once __DIR__ . '/src/Database.php';
+try { if (Database::q('SELECT COUNT(*) FROM admins')->fetchColumn()>0) { http_response_code(403); exit('Already installed. Manage accounts from the admin area.'); } } catch (PDOException $ex) { if (!in_array((int)($ex->errorInfo[1]??0),[1049,1146],true)) throw $ex; }
 $done = []; $err = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

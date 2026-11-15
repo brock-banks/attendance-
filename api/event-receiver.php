@@ -15,7 +15,7 @@ require_once dirname(__DIR__) . '/includes/bootstrap.php';
 header('Content-Type: application/json');
 
 // Optional shared-token gate.
-if (EVENT_TOKEN !== '' && ($_GET['token'] ?? '') !== EVENT_TOKEN) {
+if (EVENT_TOKEN !== '' && !hash_equals(EVENT_TOKEN, (string)($_GET['token'] ?? ''))) {
     http_response_code(403);
     echo json_encode(['ok' => false, 'error' => 'forbidden']);
     exit;
@@ -67,7 +67,8 @@ $name = $ace['name'] ?? $json['name'] ?? null;
 
 // Event time (ISO8601 with tz) -> MySQL DATETIME.
 $dt = $json['dateTime'] ?? $ace['dateTime'] ?? date('c');
-$eventTime = date('Y-m-d H:i:s', strtotime($dt) ?: time());
+if (!is_string($dt) || strtotime($dt) === false) { http_response_code(422); echo json_encode(['ok'=>false, 'error'=>'Invalid event time']); exit; }
+$eventTime = date('Y-m-d H:i:s', strtotime($dt));
 
 // Save snapshot if one was uploaded with the event.
 $imagePath = null;

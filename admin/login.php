@@ -11,14 +11,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: ' . APP_BASE_URL . '/admin/index.php');
         exit;
     }
-    $error = 'Invalid username or password.';
+    $error = 'Sign-in failed. Check your credentials. After five attempts, wait 15 minutes before trying again.';
 }
 ?>
 <!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Login · Attendance</title>
-<link rel="stylesheet" href="<?= APP_BASE_URL ?>/assets/css/app.css">
+<link rel="stylesheet" href="<?= APP_BASE_URL ?>/assets/css/app.css?v=<?= filemtime(BASE_PATH . '/assets/css/app.css') ?>">
 </head><body class="login-body">
 <form class="login-card" method="post">
   <h1><span class="logo">A</span> Attendance</h1>
@@ -27,5 +27,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <label>Username <input name="username" autofocus required></label>
   <label>Password <input type="password" name="password" required></label>
   <button type="submit" class="btn">Sign in</button>
-</form>
+<p><a href="forgot-password.php">Forgot password?</a></p><?= Auth::field() ?></form>
 </body></html>

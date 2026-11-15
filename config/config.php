@@ -12,7 +12,7 @@ define('DB_USER', 'root');
 define('DB_PASS', '');
 
 // ---- Hikvision terminal (ISAPI) ----
-define('DEVICE_IP',   '192.168.100.75'); // <-- your terminal's IP
+define('DEVICE_IP',   '192.168.100.16'); // <-- your terminal's IP
 define('DEVICE_PORT', 80);               // ISAPI HTTP port (80, or 443 for https)
 define('DEVICE_USER', 'admin');          // <-- terminal admin login
 define('DEVICE_PASS', 'SRS25326');      // <-- terminal admin password

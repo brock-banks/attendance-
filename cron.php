@@ -20,7 +20,7 @@ if ($ip !== '') {
     $staleSec = $last ? (time() - strtotime($last)) : PHP_INT_MAX;
     if ($staleSec > 300) {   // no pushes (not even a heartbeat) for >5 minutes
         try {
-            $r = (new IsapiClient())->setHttpHost($ip, $port, '/attendance/api/event-receiver.php');
+            $r = (new IsapiClient())->setHttpHost($ip, $port, APP_BASE_URL . '/api/event-receiver.php' . (EVENT_TOKEN !== '' ? '?token=' . rawurlencode(EVENT_TOKEN) : ''));
             echo date('c') . " watchdog: pushes stale ({$staleSec}s) — re-registered {$ip}:{$port} -> HTTP {$r['code']}" . PHP_EOL;
         } catch (Throwable $e) {
             echo date('c') . ' watchdog error: ' . $e->getMessage() . PHP_EOL;

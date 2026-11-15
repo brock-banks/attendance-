@@ -37,7 +37,7 @@ $leaves = Leave::recent();
   <?php if (!$employees): ?>
     <p class="muted">Add employees first.</p>
   <?php else: ?>
-  <form method="post" class="filters">
+  <?php if (Auth::role() !== 'viewer'): ?><form method="post" class="filters">
     <input type="hidden" name="action" value="add">
     <label>Employee
       <select name="emp_no" required>
@@ -57,7 +57,7 @@ $leaves = Leave::recent();
     </label>
     <label>Note <input name="note" placeholder="optional"></label>
     <button class="btn">Add leave</button>
-  </form>
+  <?= Auth::field() ?></form><?php endif; ?>
   <?php endif; ?>
 </div>
 
@@ -74,14 +74,14 @@ $leaves = Leave::recent();
         <td><?= e($l['start_date']) ?></td>
         <td><?= e($l['end_date']) ?></td>
         <td><?= $days ?></td>
-        <td><span class="pill"><?= e(Leave::TYPES[$l['type']] ?? $l['type']) ?></span></td>
+        <td><?= status_label(Leave::TYPES[$l['type']] ?? $l['type']) ?></td>
         <td class="muted"><?= e($l['note']) ?></td>
         <td>
-          <form method="post" onsubmit="return confirm('Remove this leave record?')">
+          <?php if (Auth::role() !== 'viewer'): ?><form method="post" onsubmit="return confirm('Remove this leave record?')">
             <input type="hidden" name="action" value="delete">
             <input type="hidden" name="id" value="<?= (int)$l['id'] ?>">
             <button class="btn sm danger">×</button>
-          </form>
+          <?= Auth::field() ?></form><?php endif; ?>
         </td>
       </tr>
     <?php endforeach; ?>

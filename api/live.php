@@ -7,7 +7,7 @@ header('Content-Type: application/json');
 $today = date('Y-m-d');
 
 $present = Database::q(
-    "SELECT a.emp_no, COALESCE(e.name, a.emp_no) AS name, a.check_in, a.check_out, a.status
+    "SELECT a.work_date,a.shift_id,a.emp_no, COALESCE(e.name, a.emp_no) AS name, a.check_in, a.check_out, a.status
      FROM attendance a LEFT JOIN employees e ON e.emp_no = a.emp_no
      WHERE a.work_date = ? ORDER BY a.check_in DESC",
     [$today]
@@ -20,6 +20,7 @@ $feed = Database::q(
 )->fetchAll();
 
 foreach ($present as &$p) {
+    $p['checkout_state']=Report::checkoutState($p);
     $p['check_in']  = $p['check_in']  ? date('H:i', strtotime($p['check_in']))  : '';
     $p['check_out'] = $p['check_out'] ? date('H:i', strtotime($p['check_out'])) : '';
 }
